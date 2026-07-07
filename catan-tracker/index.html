@@ -132,6 +132,10 @@ function CatanTracker() {
   function addPlayer() {
     const name = newName.trim();
     if (!name) return;
+    if (players.length >= 6) {
+      showToast("Roster is full — Catan has 6 piece colors, max 6 players");
+      return;
+    }
     if (players.some(p => p.name.toLowerCase() === name.toLowerCase())) {
       showToast("That name is already on the roster");
       return;
@@ -485,16 +489,22 @@ function CatanTracker() {
           {tab === "players" && (
             <div>
               <h2 className="text-lg font-bold mb-4" style={{ color: "#2A2118" }}>Roster</h2>
-              <div className="flex gap-2 mb-5">
-                <input value={newName} onChange={e => setNewName(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && addPlayer()}
-                  placeholder="Player name"
-                  className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none"
-                  style={{ background: "#FFF8E7", border: "1px solid #D9C9A3", color: "#2A2118" }} />
-                <button onClick={addPlayer}
-                  className="px-5 py-2.5 rounded-lg font-bold text-sm"
-                  style={{ background: "#C4553B", color: "#FFF8E7" }}>Add</button>
-              </div>
+              {players.length >= 6 ? (
+                <p className="text-sm py-3 mb-5 text-center rounded-lg" style={{ color: "#6B5D45", background: "rgba(255,248,231,0.4)", border: "1px dashed #D9C9A3" }}>
+                  Roster is full (6/6) — Catan has 6 piece colors. Remove someone to add another player.
+                </p>
+              ) : (
+                <div className="flex gap-2 mb-5">
+                  <input value={newName} onChange={e => setNewName(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && addPlayer()}
+                    placeholder="Player name"
+                    className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none"
+                    style={{ background: "#FFF8E7", border: "1px solid #D9C9A3", color: "#2A2118" }} />
+                  <button onClick={addPlayer}
+                    className="px-5 py-2.5 rounded-lg font-bold text-sm"
+                    style={{ background: "#C4553B", color: "#FFF8E7" }}>Add</button>
+                </div>
+              )}
               {players.length === 0 ? (
                 <p className="text-sm py-6 text-center" style={{ color: "#6B5D45" }}>
                   Add your group — you and your 2–3 friends.
