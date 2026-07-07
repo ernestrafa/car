@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Longest Road — Catan Record Book</title>
+<meta name="description" content="Track your Catan group's games: winners, pick order, and stats." />
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { margin: 0; }
+  button { cursor: pointer; border: none; font-family: inherit; }
+  input { font-family: inherit; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect } = React;
+
+// ---------- Storage adapter: cloud first, device fallback ----------
+const LOCAL_KEY = "catan-tracker-data";
+
+async function loadData() {
+  try {
+    const r = await fetch("/api/data");
+    if (r.ok) {
+      const j = await r.json();
+      return { data: j.data, mode: "cloud" };
+    }
+  } catch (e) { /* offline or no API */ }
+  try {
+    const raw = localStorage.getItem(LOCAL_KEY);
+    return { data: raw ? JSON.parse(raw) : null, mode: "local" };
+  } catch (e) {
+    return { data: null, mode: "local" };
+  }
+}
+
+async function saveData(data, mode) {
+  // Always keep a device copy as backup
+  try { localStorage.setItem(LOCAL_KEY, JSON.stringify(data)); } catch (e) {}
+  if (mode === "cloud") {
+    const r = await fetch("/api/data", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data }),
+    });
+    if (!r.ok) throw new Error("cloud-save-failed");
+  }
+}
+
+// ---------- Constants ----------
+const PIECE_COLORS = [
+  { name: "Red", hex: "#C0392B" },
+  { name: "Blue", hex: "#2E5FA3" },
+  { name: "Orange", hex: "#E67E22" },
+  { name: "White", hex: "#D8D3C4" },
+  { name: "Green", hex: "#4E7C3A" },
+  { name: "Brown", hex: "#7B5233" },
+];
+const ORDINALS = ["1st", "2nd", "3rd", "4th"];
+const HEX_CLIP = "polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)";
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+function Hex({ color, size = 44, children, dim = false, ring = false }) {
+  return (
+    <div
+      style={{
+        width: size, height: size * 0.9, clipPath: HEX_CLIP,
+        background: dim ? "#9aa5b1" : color, opacity: dim ? 0.45 : 1,
+        boxShadow: ring ? "0 0 0 3px #E8B33C inset" : "none",
+      }}
+      className="flex items-center justify-center shrink-0"
+    >
+      <span className="font-bold select-none" style={{
+        color: color === "#D8D3C4" && !dim ? "#2A2118" : "#FFF8E7",
+        fontSize: size * 0.34,
+        textShadow: color === "#D8D3C4" ? "none" : "0 1px 2px rgba(0,0,0,0.35)",
+      }}>{children}</span>
+    </div>
+  );
+}
+
+function initials(name) {
+  return name.trim().split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();
+}
+
+// ---------- Main App ----------
+function CatanTracker() {
+  const [players, setPlayers] = useState([]);
+  const [games, setGames] = useState([]);
+  const [tab, setTab] = useState("log");
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState(null);
+  const [syncMode, setSyncMode] = useState("local");
+
+  const [selected, setSelected] = useState([]);
+  const [pickOrder, setPickOrder] = useState([]);
+  const [finishOrder, setFinishOrder] = useState([]);
+  const [logStep, setLogStep] = useState(1);
+  const [newName, setNewName] = useState("");
+  const [historyView, setHistoryView] = useState("cards");
+
+  useEffect(() => {
+    (async () => {
+      const { data, mode } = await loadData();
+      if (data) {
+        setPlayers(data.players || []);
+        setGames(data.games || []);
+      }
+      setSyncMode(mode);
+      setLoading(false);
+    })();
+  }, []);
+
+  async function persist(nextPlayers, nextGames) {
+    try {
+      await saveData({ players: nextPlayers, games: nextGames }, syncMode);
+    } catch (e) {
+      showToast("Cloud save failed — kept a copy on this device");
+    }
+  }
+
+  function showToast(msg) {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2600);
+  }
+
+  function addPlayer() {
+    const name = newName.trim();
+    if (!name) return;
+    if (players.some(p => p.name.toLowerCase() === name.toLowerCase())) {
+      showToast("That name is already on the roster");
+      return;
+    }
+    const used = players.map(p => p.color);
+    const color = (PIECE_COLORS.find(c => !used.includes(c.hex)) || PIECE_COLORS[players.length % PIECE_COLORS.length]).hex;
+    const next = [...players, { id: uid(), name, color }];
+    setPlayers(next);
+    setNewName("");
+    persist(next, games);
+  }
+
+  function removePlayer(id) {
+    if (games.some(g => g.entries.some(e => e.playerId === id))) {
+      showToast("Can't remove — this player has recorded games");
+      return;
+    }
+    const next = players.filter(p => p.id !== id);
+    setPlayers(next);
+    persist(next, games);
+  }
+
+  function setPlayerColor(id, hex) {
+    const next = players.map(p => p.id === id ? { ...p, color: hex } : p);
+    setPlayers(next);
+    persist(next, games);
+  }
+
+  const byId = Object.fromEntries(players.map(p => [p.id, p]));
+
+  function toggleSelect(id) {
+    setSelected(s => s.includes(id) ? s.filter(x => x !== id) : s.length < 4 ? [...s, id] : s);
+  }
+  function tapOrder(id, order, setOrder) {
+    setOrder(o => o.includes(id) ? o.filter(x => x !== id) : [...o, id]);
+  }
+  function resetLog() {
+    setSelected([]); setPickOrder([]); setFinishOrder([]); setLogStep(1);
+  }
+  function saveGame() {
+    const entries = selected.map(pid => ({
+      playerId: pid,
+      pick: pickOrder.indexOf(pid) + 1,
+      finish: finishOrder.indexOf(pid) + 1,
+    }));
+    const game = { id: uid(), date: new Date().toISOString(), entries };
+    const next = [game, ...games];
+    setGames(next);
+    persist(players, next);
+    resetLog();
+    showToast("Game saved — " + (byId[finishOrder[0]] ? byId[finishOrder[0]].name : "") + " takes the win 🏆");
+    setTab("history");
+  }
+  function deleteGame(id) {
+    const next = games.filter(g => g.id !== id);
+    setGames(next);
+    persist(players, next);
+    showToast("Game deleted");
+  }
+
+  function computeStats() {
+    const stats = {};
+    players.forEach(p => { stats[p.id] = { games: 0, wins: 0, finishSum: 0 }; });
+    const pickSlots = [1, 2, 3, 4].map(() => ({ games: 0, wins: 0, finishSum: 0 }));
+    games.forEach(g => {
+      g.entries.forEach(e => {
+        const s = stats[e.playerId];
+        if (s) {
+          s.games += 1; s.finishSum += e.finish;
+          if (e.finish === 1) s.wins += 1;
+        }
+        const slot = pickSlots[e.pick - 1];
+        if (slot) {
+          slot.games += 1; slot.finishSum += e.finish;
+          if (e.finish === 1) slot.wins += 1;
+        }
+      });
+    });
+    return { stats, pickSlots };
+  }
+  const { stats, pickSlots } = computeStats();
+  const leaderboard = players
+    .filter(p => stats[p.id] && stats[p.id].games > 0)
+    .sort((a, b) => {
+      const sa = stats[a.id], sb = stats[b.id];
+      const wr = sb.wins / sb.games - sa.wins / sa.games;
+      if (wr !== 0) return wr;
+      return sb.wins - sa.wins;
+    });
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: "#1E3A5F" }}>
+        <div className="text-center">
+          <Hex color="#E8B33C" size={64}>⬡</Hex>
+          <p className="mt-4" style={{ color: "#F0E3C0", fontFamily: "Georgia, serif" }}>Setting up the board…</p>
+        </div>
+      </div>
+    );
+  }
+
+  const tabs = [
+    { id: "log", label: "Log Game" },
+    { id: "history", label: "History" },
+    { id: "stats", label: "Stats" },
+    { id: "players", label: "Players" },
+  ];
+
+  return (
+    <div className="min-h-screen" style={{
+      background: "radial-gradient(ellipse at 50% -20%, #2C5282 0%, #1E3A5F 55%, #14283F 100%)",
+      fontFamily: "'Trebuchet MS', 'Segoe UI', sans-serif",
+    }}>
+      <header className="max-w-2xl mx-auto px-4 pt-8 pb-4 text-center">
+        <div className="flex justify-center gap-1 mb-3">
+          <Hex color="#4E7C3A" size={30}> </Hex>
+          <Hex color="#E8B33C" size={30}> </Hex>
+          <Hex color="#C0392B" size={30}> </Hex>
+        </div>
+        <h1 className="text-3xl tracking-wide" style={{
+          fontFamily: "Georgia, 'Times New Roman', serif", color: "#F0E3C0",
+          fontVariant: "small-caps", letterSpacing: "0.06em",
+        }}>The Longest Road</h1>
+        <p className="text-sm mt-1" style={{ color: "#8FA8C4" }}>
+          Catan record book · {games.length} game{games.length === 1 ? "" : "s"} logged
+        </p>
+        <p className="text-xs mt-1 font-semibold" style={{ color: syncMode === "cloud" ? "#7FC98F" : "#D9B85C" }}>
+          {syncMode === "cloud" ? "● Cloud sync on — shared with your group" : "● Saved on this device only"}
+        </p>
+      </header>
+
+      <nav className="max-w-2xl mx-auto px-4 flex gap-1 mb-5">
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className="flex-1 py-2.5 text-sm font-semibold rounded-t-lg transition-colors"
+            style={{
+              background: tab === t.id ? "#F0E3C0" : "rgba(240,227,192,0.12)",
+              color: tab === t.id ? "#2A2118" : "#C9D6E5",
+            }}>{t.label}</button>
+        ))}
+      </nav>
+
+      <main className="max-w-2xl mx-auto px-4 pb-16">
+        <div className="rounded-b-xl rounded-tr-xl p-4 sm:p-6"
+          style={{ background: "#F0E3C0", boxShadow: "0 8px 30px rgba(0,0,0,0.35)" }}>
+
+          {tab === "log" && (
+            <div>
+              {players.length < 3 ? (
+                <div className="text-center py-10">
+                  <p className="text-lg font-semibold" style={{ color: "#2A2118" }}>Add your group first</p>
+                  <p className="text-sm mt-1 mb-4" style={{ color: "#6B5D45" }}>
+                    You need at least 3 players on the roster to log a game.
+                  </p>
+                  <button onClick={() => setTab("players")}
+                    className="px-5 py-2.5 rounded-lg font-semibold text-sm"
+                    style={{ background: "#C4553B", color: "#FFF8E7" }}>Go to Players</button>
+                </div>
+              ) : (
+                <div>
+                  <div className="flex items-center gap-2 mb-5">
+                    {[1, 2, 3].map(s => (
+                      <div key={s} className="flex-1 h-1.5 rounded-full"
+                        style={{ background: logStep >= s ? "#C4553B" : "#D9C9A3" }} />
+                    ))}
+                  </div>
+
+                  {logStep === 1 && (
+                    <div>
+                      <h2 className="text-lg font-bold mb-1" style={{ color: "#2A2118" }}>Who's at the table?</h2>
+                      <p className="text-sm mb-4" style={{ color: "#6B5D45" }}>Tap 3 or 4 players.</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {players.map(p => {
+                          const on = selected.includes(p.id);
+                          return (
+                            <button key={p.id} onClick={() => toggleSelect(p.id)}
+                              className="flex items-center gap-3 p-3 rounded-lg transition-all"
+                              style={{
+                                background: on ? "#FFF8E7" : "rgba(255,248,231,0.4)",
+                                border: on ? "2px solid #C4553B" : "2px solid #D9C9A3",
+                              }}>
+                              <Hex color={p.color} size={38} dim={!on}>{initials(p.name)}</Hex>
+                              <span className="font-semibold text-sm" style={{ color: "#2A2118" }}>{p.name}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <button disabled={selected.length < 3} onClick={() => setLogStep(2)}
+                        className="w-full mt-5 py-3 rounded-lg font-bold text-sm disabled:opacity-40"
+                        style={{ background: "#C4553B", color: "#FFF8E7" }}>
+                        Next: pick order ({selected.length}/{selected.length < 3 ? "3" : "4"} selected)
+                      </button>
+                    </div>
+                  )}
+
+                  {logStep === 2 && (
+                    <OrderStep
+                      title="Setup pick order"
+                      subtitle="Tap players in the order they picked their starting spots — first pick first. Tap again to undo."
+                      selected={selected} order={pickOrder} byId={byId}
+                      onTap={id => tapOrder(id, pickOrder, setPickOrder)}
+                      onBack={() => setLogStep(1)} onNext={() => setLogStep(3)}
+                      nextLabel="Next: final standings" />
+                  )}
+
+                  {logStep === 3 && (
+                    <OrderStep
+                      title="Final standings"
+                      subtitle="Tap players in the order they finished — winner first. Tap again to undo."
+                      selected={selected} order={finishOrder} byId={byId}
+                      onTap={id => tapOrder(id, finishOrder, setFinishOrder)}
+                      onBack={() => setLogStep(2)} onNext={saveGame}
+                      nextLabel="Save game" trophy />
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab === "history" && (
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold" style={{ color: "#2A2118" }}>Game history</h2>
+                {games.length > 0 && (
+                  <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid #D9C9A3" }}>
+                    {["cards", "table"].map(v => (
+                      <button key={v} onClick={() => setHistoryView(v)}
+                        className="px-3 py-1.5 text-xs font-bold"
+                        style={{
+                          background: historyView === v ? "#C4553B" : "#FFF8E7",
+                          color: historyView === v ? "#FFF8E7" : "#6B5D45",
+                        }}>{v === "cards" ? "Games" : "Full data"}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {games.length === 0 ? (
+                <p className="text-sm py-8 text-center" style={{ color: "#6B5D45" }}>
+                  No games yet. Log your first one and the record book begins.
+                </p>
+              ) : historyView === "cards" ? (
+                <div className="flex flex-col gap-3">
+                  {games.map(g => {
+                    const sorted = [...g.entries].sort((a, b) => a.finish - b.finish);
+                    const d = new Date(g.date);
+                    return (
+                      <div key={g.id} className="rounded-lg p-3"
+                        style={{ background: "#FFF8E7", border: "1px solid #D9C9A3" }}>
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-xs font-semibold" style={{ color: "#6B5D45" }}>
+                            {d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
+                            {" · "}{g.entries.length} players
+                          </span>
+                          <button onClick={() => deleteGame(g.id)}
+                            className="text-xs px-2 py-1 rounded" style={{ color: "#C4553B" }}>Delete</button>
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          {sorted.map(e => {
+                            const p = byId[e.playerId];
+                            if (!p) return null;
+                            return (
+                              <div key={e.playerId} className="flex items-center gap-2.5">
+                                <span className="w-8 text-sm font-bold"
+                                  style={{ color: e.finish === 1 ? "#B8860B" : "#6B5D45" }}>
+                                  {e.finish === 1 ? "🏆" : ORDINALS[e.finish - 1]}
+                                </span>
+                                <Hex color={p.color} size={28}>{initials(p.name)}</Hex>
+                                <span className="text-sm font-semibold flex-1" style={{ color: "#2A2118" }}>{p.name}</span>
+                                <span className="text-xs" style={{ color: "#6B5D45" }}>{ORDINALS[e.pick - 1]} pick</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <DataTable games={games} byId={byId}
+                  onCopy={() => showToast("Copied as CSV — paste into Excel or Sheets")} />
+              )}
+            </div>
+          )}
+
+          {tab === "stats" && (
+            <div>
+              <h2 className="text-lg font-bold mb-4" style={{ color: "#2A2118" }}>Leaderboard</h2>
+              {leaderboard.length === 0 ? (
+                <p className="text-sm py-8 text-center" style={{ color: "#6B5D45" }}>
+                  Stats appear after your first logged game.
+                </p>
+              ) : (
+                <div>
+                  <div className="flex flex-col gap-2 mb-8">
+                    {leaderboard.map((p, i) => {
+                      const s = stats[p.id];
+                      const winRate = Math.round((s.wins / s.games) * 100);
+                      const avgFinish = (s.finishSum / s.games).toFixed(2);
+                      return (
+                        <div key={p.id} className="rounded-lg p-3"
+                          style={{ background: "#FFF8E7", border: i === 0 ? "2px solid #E8B33C" : "1px solid #D9C9A3" }}>
+                          <div className="flex items-center gap-3 mb-2">
+                            <Hex color={p.color} size={40} ring={i === 0}>{initials(p.name)}</Hex>
+                            <div className="flex-1">
+                              <div className="font-bold text-sm" style={{ color: "#2A2118" }}>
+                                {i === 0 && "👑 "}{p.name}
+                              </div>
+                              <div className="text-xs" style={{ color: "#6B5D45" }}>
+                                {s.wins} win{s.wins === 1 ? "" : "s"} in {s.games} game{s.games === 1 ? "" : "s"} · avg finish {avgFinish}
+                              </div>
+                            </div>
+                            <span className="text-xl font-bold" style={{ color: "#C4553B" }}>{winRate}%</span>
+                          </div>
+                          <div className="h-2 rounded-full overflow-hidden" style={{ background: "#E8DCBB" }}>
+                            <div className="h-full rounded-full" style={{ width: winRate + "%", background: p.color }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <h2 className="text-lg font-bold mb-1" style={{ color: "#2A2118" }}>Does pick order matter?</h2>
+                  <p className="text-xs mb-4" style={{ color: "#6B5D45" }}>
+                    Win rate and average finish by setup pick position, across all games.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {pickSlots.map((slot, i) => {
+                      const wr = slot.games ? Math.round((slot.wins / slot.games) * 100) : null;
+                      const af = slot.games ? (slot.finishSum / slot.games).toFixed(2) : "—";
+                      return (
+                        <div key={i} className="rounded-lg p-3 text-center"
+                          style={{ background: "#FFF8E7", border: "1px solid #D9C9A3" }}>
+                          <div className="text-xs font-bold mb-1" style={{ color: "#6B5D45" }}>{ORDINALS[i]} pick</div>
+                          <div className="text-2xl font-bold"
+                            style={{ color: wr !== null ? "#C4553B" : "#B7A986" }}>
+                            {wr !== null ? wr + "%" : "—"}
+                          </div>
+                          <div className="text-xs mt-1" style={{ color: "#6B5D45" }}>avg finish {af}</div>
+                          <div className="text-xs" style={{ color: "#9C8C6B" }}>
+                            {slot.games} seat{slot.games === 1 ? "" : "s"}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab === "players" && (
+            <div>
+              <h2 className="text-lg font-bold mb-4" style={{ color: "#2A2118" }}>Roster</h2>
+              <div className="flex gap-2 mb-5">
+                <input value={newName} onChange={e => setNewName(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && addPlayer()}
+                  placeholder="Player name"
+                  className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none"
+                  style={{ background: "#FFF8E7", border: "1px solid #D9C9A3", color: "#2A2118" }} />
+                <button onClick={addPlayer}
+                  className="px-5 py-2.5 rounded-lg font-bold text-sm"
+                  style={{ background: "#C4553B", color: "#FFF8E7" }}>Add</button>
+              </div>
+              {players.length === 0 ? (
+                <p className="text-sm py-6 text-center" style={{ color: "#6B5D45" }}>
+                  Add your group — you and your 2–3 friends.
+                </p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {players.map(p => (
+                    <div key={p.id} className="flex items-center gap-3 rounded-lg p-3"
+                      style={{ background: "#FFF8E7", border: "1px solid #D9C9A3" }}>
+                      <Hex color={p.color} size={38}>{initials(p.name)}</Hex>
+                      <span className="font-semibold text-sm flex-1" style={{ color: "#2A2118" }}>{p.name}</span>
+                      <div className="flex gap-1">
+                        {PIECE_COLORS.map(c => (
+                          <button key={c.hex} onClick={() => setPlayerColor(p.id, c.hex)} title={c.name}
+                            className="w-5 h-5 rounded-full"
+                            style={{
+                              background: c.hex,
+                              outline: p.color === c.hex ? "2px solid #2A2118" : "1px solid #D9C9A3",
+                              outlineOffset: 1,
+                            }} />
+                        ))}
+                      </div>
+                      <button onClick={() => removePlayer(p.id)}
+                        className="text-xs px-2 py-1" style={{ color: "#C4553B" }}>Remove</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </main>
+
+      {toast && (
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-lg text-sm font-semibold shadow-lg"
+          style={{ background: "#2A2118", color: "#F0E3C0", zIndex: 50 }}>{toast}</div>
+      )}
+    </div>
+  );
+}
+
+// ---------- Full dataset table ----------
+function DataTable({ games, byId, onCopy }) {
+  const rows = [];
+  games.forEach((g, gi) => {
+    const gameNum = games.length - gi;
+    const d = new Date(g.date);
+    [...g.entries].sort((a, b) => a.finish - b.finish).forEach(e => {
+      const p = byId[e.playerId];
+      rows.push({
+        game: gameNum,
+        date: d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "2-digit" }),
+        isoDate: d.toISOString().slice(0, 10),
+        name: p ? p.name : "?",
+        color: p ? p.color : "#999",
+        pick: e.pick, finish: e.finish, won: e.finish === 1,
+      });
+    });
+  });
+
+  function copyCSV() {
+    const header = "game,date,player,pick,finish,won";
+    const lines = rows.map(r => [r.game, r.isoDate, r.name, r.pick, r.finish, r.won ? 1 : 0].join(","));
+    const csv = [header].concat(lines).join("\n");
+    function fallbackCopy(text) {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      onCopy();
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(csv).then(onCopy).catch(() => fallbackCopy(csv));
+    } else {
+      fallbackCopy(csv);
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs" style={{ color: "#6B5D45" }}>
+          {rows.length} entries across {games.length} game{games.length === 1 ? "" : "s"} — one row per player per game.
+        </p>
+        <button onClick={copyCSV}
+          className="text-xs font-bold px-3 py-1.5 rounded-lg shrink-0"
+          style={{ background: "#2A2118", color: "#F0E3C0" }}>Copy CSV</button>
+      </div>
+      <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid #D9C9A3" }}>
+        <table className="w-full text-sm" style={{ background: "#FFF8E7", borderCollapse: "collapse" }}>
+          <thead>
+            <tr style={{ background: "#E8DCBB" }}>
+              {["#", "Date", "Player", "Pick", "Finish"].map(h => (
+                <th key={h} className="text-left px-3 py-2 text-xs font-bold whitespace-nowrap"
+                  style={{ color: "#6B5D45" }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i} style={{ borderTop: "1px solid #EFE5CB", background: r.won ? "#FBF3D9" : "transparent" }}>
+                <td className="px-3 py-2 text-xs" style={{ color: "#9C8C6B" }}>{r.game}</td>
+                <td className="px-3 py-2 text-xs whitespace-nowrap" style={{ color: "#6B5D45" }}>{r.date}</td>
+                <td className="px-3 py-2 font-semibold whitespace-nowrap" style={{ color: "#2A2118" }}>
+                  <span className="inline-block w-2.5 h-2.5 rounded-full mr-2" style={{ background: r.color }} />
+                  {r.name}
+                </td>
+                <td className="px-3 py-2" style={{ color: "#6B5D45" }}>{ORDINALS[r.pick - 1]}</td>
+                <td className="px-3 py-2 font-bold whitespace-nowrap"
+                  style={{ color: r.won ? "#B8860B" : "#2A2118" }}>
+                  {r.won ? "🏆 1st" : ORDINALS[r.finish - 1]}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Shared ordering step ----------
+function OrderStep({ title, subtitle, selected, order, byId, onTap, onBack, onNext, nextLabel, trophy }) {
+  const done = order.length === selected.length;
+  return (
+    <div>
+      <h2 className="text-lg font-bold mb-1" style={{ color: "#2A2118" }}>{title}</h2>
+      <p className="text-sm mb-4" style={{ color: "#6B5D45" }}>{subtitle}</p>
+      <div className="flex flex-col gap-2">
+        {selected.map(pid => {
+          const p = byId[pid];
+          const pos = order.indexOf(pid);
+          const picked = pos !== -1;
+          return (
+            <button key={pid} onClick={() => onTap(pid)}
+              className="flex items-center gap-3 p-3 rounded-lg transition-all"
+              style={{
+                background: picked ? "#FFF8E7" : "rgba(255,248,231,0.4)",
+                border: picked ? "2px solid #C4553B" : "2px dashed #C9B989",
+              }}>
+              <Hex color={p.color} size={38} dim={!picked}>{initials(p.name)}</Hex>
+              <span className="font-semibold text-sm flex-1 text-left" style={{ color: "#2A2118" }}>{p.name}</span>
+              {picked && (
+                <span className="text-sm font-bold px-2.5 py-1 rounded-full"
+                  style={{ background: pos === 0 && trophy ? "#E8B33C" : "#E8DCBB", color: "#2A2118" }}>
+                  {pos === 0 && trophy ? "🏆 1st" : ORDINALS[pos]}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex gap-2 mt-5">
+        <button onClick={onBack} className="px-5 py-3 rounded-lg font-bold text-sm"
+          style={{ background: "#E8DCBB", color: "#2A2118" }}>Back</button>
+        <button disabled={!done} onClick={onNext}
+          className="flex-1 py-3 rounded-lg font-bold text-sm disabled:opacity-40"
+          style={{ background: "#C4553B", color: "#FFF8E7" }}>
+          {nextLabel} {done ? "" : "(" + order.length + "/" + selected.length + ")"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<CatanTracker />);
+</script>
+</body>
+</html>
