@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+:root {
+  --parchment: #f5efdd;
+  --parchment-deep: #ece2c8;
+  --ink: #1c2b45;
+  --ink-soft: #3a4a68;
+  --burgundy: #5c1f2e;
+  --gold: #a1741f;
+
+  --level-pshat-bg: #fbf6e9;
+  --level-pshat-border: #d8c9a0;
+  --level-pshat-accent: #a1741f;
+
+  --level-remez-bg: #f2ecd9;
+  --level-remez-border: #b9c0a0;
+  --level-remez-accent: #3f6b52;
+
+  --level-drush-bg: #e9e0ce;
+  --level-drush-border: #a6a9c0;
+  --level-drush-accent: #2f4468;
+
+  --level-sod-bg: #dfd2c4;
+  --level-sod-border: #8c5a66;
+  --level-sod-accent: #5c1f2e;
+}
+
+@theme inline {
+  --color-parchment: var(--parchment);
+  --color-parchment-deep: var(--parchment-deep);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-burgundy: var(--burgundy);
+  --color-gold: var(--gold);
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-hebrew: var(--font-hebrew);
+}
+
+html {
+  background: var(--parchment);
+}
+
+body {
+  background:
+    radial-gradient(ellipse at top left, rgba(161, 116, 31, 0.07), transparent 55%),
+    radial-gradient(ellipse at bottom right, rgba(92, 31, 46, 0.06), transparent 55%),
+    var(--parchment);
+  color: var(--ink);
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+}
+
+.font-display {
+  font-family: var(--font-display), Georgia, serif;
+}
+
+.font-hebrew {
+  font-family: var(--font-hebrew), "Times New Roman", serif;
+  direction: rtl;
+  unicode-bidi: isolate;
+}
+
+/* Level cards deepen visually from Pshat (revealed) to Sod (hidden) */
+.level-card {
+  border-width: 1px;
+  border-radius: 1rem;
+  transition: box-shadow 0.2s ease;
+}
+
+.level-pshat {
+  background: var(--level-pshat-bg);
+  border-color: var(--level-pshat-border);
+  box-shadow: 0 1px 2px rgba(28, 43, 69, 0.04);
+}
+
+.level-remez {
+  background: var(--level-remez-bg);
+  border-color: var(--level-remez-border);
+  box-shadow: 0 2px 6px rgba(28, 43, 69, 0.06);
+}
+
+.level-drush {
+  background: var(--level-drush-bg);
+  border-color: var(--level-drush-border);
+  box-shadow: 0 3px 10px rgba(28, 43, 69, 0.09), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+.level-sod {
+  background: var(--level-sod-bg);
+  border-color: var(--level-sod-border);
+  box-shadow: 0 4px 16px rgba(28, 20, 20, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.quote-block {
+  border-left: 3px solid var(--accent, var(--gold));
+  background: rgba(255, 255, 255, 0.35);
+  border-radius: 0.5rem;
+}
+
+::selection {
+  background: rgba(161, 116, 31, 0.25);
+}
