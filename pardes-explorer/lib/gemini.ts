@@ -1,12 +1,12 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenAI } from "@google/genai";
 import type { SefariaSource } from "./sefaria";
 import type { PardesLevel, QuoteBlock, FunFact } from "./types";
 
-const MODEL = "claude-sonnet-5";
+const MODEL = "gemini-2.5-flash";
 
-let client: Anthropic | null = null;
-function getClient(): Anthropic {
-  if (!client) client = new Anthropic();
+let client: GoogleGenAI | null = null;
+function getClient(): GoogleGenAI {
+  if (!client) client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   return client;
 }
 
@@ -21,8 +21,8 @@ export interface DeclinedResult {
   message: string;
 }
 
-/** Shape Claude actually returns for step 3 — sefariaUrl is computed
- * server-side afterward from validated Sefaria data, not by Claude. */
+/** Shape the model actually returns for step 3 — sefariaUrl is computed
+ * server-side afterward from validated Sefaria data, not by the model. */
 export type RawQuoteBlock = Omit<QuoteBlock, "sefariaUrl">;
 
 export interface RawLevelDetail {
@@ -60,57 +60,48 @@ function stripJsonFences(text: string): string {
   return t;
 }
 
-async function callClaudeJson<T>(
+async function callGeminiJson<T>(
   system: string,
   userPrompt: string,
-  maxTokens: number
+  maxOutputTokens: number
 ): Promise<T> {
-  const anthropic = getClient();
-  const messages: Anthropic.MessageParam[] = [
-    { role: "user", content: userPrompt },
-  ];
+  const ai = getClient();
+  const config = {
+    systemInstruction: system,
+    responseMimeType: "application/json",
+    maxOutputTokens,
+  };
 
-  const first = await anthropic.messages.create({
+  const first = await ai.models.generateContent({
     model: MODEL,
-    max_tokens: maxTokens,
-    thinking: { type: "adaptive" },
-    output_config: { effort: "medium" },
-    system,
-    messages,
+    contents: userPrompt,
+    config,
   });
-
-  const firstText = first.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("\n");
+  const firstText = first.text ?? "";
 
   try {
     return JSON.parse(stripJsonFences(firstText)) as T;
   } catch {
-    // retry once with an explicit reminder
+    // retry once with an explicit reminder, replaying the turn as history
   }
 
-  const retry = await anthropic.messages.create({
+  const retry = await ai.models.generateContent({
     model: MODEL,
-    max_tokens: maxTokens,
-    thinking: { type: "adaptive" },
-    output_config: { effort: "medium" },
-    system,
-    messages: [
-      ...messages,
-      { role: "assistant", content: firstText },
+    contents: [
+      { role: "user", parts: [{ text: userPrompt }] },
+      { role: "model", parts: [{ text: firstText }] },
       {
         role: "user",
-        content:
-          "That was not valid JSON. Return ONLY valid JSON — no markdown fences, no commentary, no trailing text before or after the JSON object.",
+        parts: [
+          {
+            text: "That was not valid JSON. Return ONLY valid JSON — no markdown fences, no commentary, no trailing text before or after the JSON object.",
+          },
+        ],
       },
     ],
+    config,
   });
-
-  const retryText = retry.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("\n");
+  const retryText = retry.text ?? "";
 
   return JSON.parse(stripJsonFences(retryText)) as T;
 }
@@ -118,7 +109,7 @@ async function callClaudeJson<T>(
 /**
  * Step 1: identify the topic/pasuk and 2-5 candidate Sefaria refs per PaRDeS
  * level. These refs are candidates only — the caller validates every one
- * against Sefaria before anything is shown to the user or fed back to Claude.
+ * against Sefaria before anything is shown to the user or fed back to the model.
  */
 export async function identifySources(
   userInput: string
@@ -149,7 +140,7 @@ If the input is NOT related to Torah, Tanach, Talmud, halacha, Jewish thought, m
 
 Use precise, real Sefaria reference strings (book chapter:verse, or "Commentator on Book chapter:verse:comment", or Talmud "Tractate page[a/b]", or "Midrash Rabbah, Book chapter:paragraph", or "Zohar, Parsha page[a/b]"). Do not invent sources that don't exist.`;
 
-  return callClaudeJson<SourceIdentification | DeclinedResult>(
+  return callGeminiJson<SourceIdentification | DeclinedResult>(
     system,
     userInput,
     4096
@@ -174,7 +165,7 @@ function formatFetchedSources(
 }
 
 /**
- * Step 3: grounded synthesis. Claude only sees real, Sefaria-fetched texts
+ * Step 3: grounded synthesis. The model only sees real, Sefaria-fetched texts
  * and may only quote from them verbatim — this is the anti-hallucination
  * guarantee. Any level with too few real sources gets a thinner section
  * rather than padding.
@@ -236,5 +227,5 @@ ${formatFetchedSources(identification.refs.drush, sourcesByLevel.drush) || "(non
 === SOD SOURCES ===
 ${formatFetchedSources(identification.refs.sod, sourcesByLevel.sod) || "(none resolved)"}`;
 
-  return callClaudeJson<RawAnalysisResult>(system, userPrompt, 8192);
+  return callGeminiJson<RawAnalysisResult>(system, userPrompt, 8192);
 }

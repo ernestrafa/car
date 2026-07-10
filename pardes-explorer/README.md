@@ -10,19 +10,19 @@ real sources fetched live from [Sefaria](https://www.sefaria.org).
 Every query runs a three-step server-side pipeline in
 [`app/api/analyze/route.ts`](./app/api/analyze/route.ts):
 
-1. **Source identification** — Claude proposes 2–5 candidate Sefaria refs per
-   PaRDeS level (`lib/claude.ts` → `identifySources`).
+1. **Source identification** — Gemini proposes 2–5 candidate Sefaria refs per
+   PaRDeS level (`lib/gemini.ts` → `identifySources`).
 2. **Validation + fetch** — every proposed ref is checked against Sefaria's
    name-resolution API and, if valid, its real Hebrew/English text is fetched
    (`lib/sefaria.ts`). Any ref that doesn't resolve is silently dropped — this
    is the hallucination filter.
-3. **Grounded synthesis** — Claude is called again with only the real fetched
+3. **Grounded synthesis** — Gemini is called again with only the real fetched
    texts and instructed to quote *only* from them, verbatim, with exact
-   citations (`lib/claude.ts` → `synthesizeAnalysis`).
+   citations (`lib/gemini.ts` → `synthesizeAnalysis`).
 
 Citation links are built from the validated Sefaria URL slug (not from
-whatever text Claude echoes back), so every "view on Sefaria" link is a real,
-working link.
+whatever text the model echoes back), so every "view on Sefaria" link is a
+real, working link.
 
 ## Setup
 
@@ -31,14 +31,16 @@ npm install
 cp .env.local.example .env.local
 ```
 
-Add your Anthropic API key to `.env.local`:
+Add your Gemini API key to `.env.local`:
 
 ```
-ANTHROPIC_API_KEY=sk-ant-...
+GEMINI_API_KEY=...
 ```
 
-Get a key at [console.anthropic.com](https://console.anthropic.com). No key
-is needed for Sefaria — its API is free and public.
+Get a free key at [Google AI Studio](https://aistudio.google.com/apikey) —
+the Gemini API has a genuinely free tier (rate-limited) for the
+`gemini-2.5-flash` model this app uses, so no billing setup is required to
+run this. No key is needed for Sefaria — its API is free and public.
 
 Run the dev server:
 
@@ -55,7 +57,7 @@ app/
   page.tsx              — hero, input, staged loading, results UI
   api/analyze/route.ts  — the 3-step pipeline described above
 lib/
-  claude.ts              — the two Claude calls (identify, synthesize)
+  gemini.ts               — the two Gemini calls (identify, synthesize)
   sefaria.ts              — ref validation, text fetching, HTML stripping
   types.ts                 — shared types between server and client
 components/
@@ -70,7 +72,7 @@ same input is instant and doesn't re-hit the API.
 
 ## Deploy on Vercel
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/ernestrafa/car/tree/claude/pardes-explorer-app-b8xur0/pardes-explorer&env=ANTHROPIC_API_KEY&envDescription=Anthropic%20API%20key%20for%20Claude&envLink=https://console.anthropic.com)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/ernestrafa/car/tree/claude/pardes-explorer-app-b8xur0/pardes-explorer&env=GEMINI_API_KEY&envDescription=Gemini%20API%20key%20(free%20tier)&envLink=https://aistudio.google.com/apikey)
 
 Or manually:
 
@@ -80,8 +82,8 @@ Or manually:
 3. Confirm the **Framework Preset** is detected as **Next.js** (if the
    project's root directory was changed after initial creation, re-check this
    — it doesn't always re-detect automatically).
-4. Add the `ANTHROPIC_API_KEY` environment variable in the Vercel project
-   settings.
+4. Add the `GEMINI_API_KEY` environment variable in the Vercel project
+   settings (Production and Preview).
 5. Deploy.
 
 ## Notes
@@ -94,3 +96,9 @@ Or manually:
   rather than answered off-topic.
 - If a level turns up few or no grounded sources, the UI shows what's real
   rather than padding it out.
+- This app uses Google's Gemini API (`gemini-2.5-flash`) instead of Claude
+  specifically to run on Gemini's free tier at no cost. Response quality and
+  reliability on this specific task (nuanced source-grounded religious-text
+  analysis) hasn't been evaluated against Claude — if quality issues come up,
+  swapping back to Claude means restoring `lib/claude.ts` from git history and
+  pointing `route.ts` at it again.

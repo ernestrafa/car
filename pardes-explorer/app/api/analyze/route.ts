@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { identifySources, synthesizeAnalysis } from "@/lib/claude";
+import { identifySources, synthesizeAnalysis } from "@/lib/gemini";
 import {
   fetchSources,
   refToUrlSlug,
