@@ -75,10 +75,14 @@ same input is instant and doesn't re-hit the API.
 Or manually:
 
 1. Push this repo to GitHub.
-2. Import it into [Vercel](https://vercel.com/new).
-3. Add the `ANTHROPIC_API_KEY` environment variable in the Vercel project
+2. In Vercel, **Add New → Project**, pick this repo, and set **Root
+   Directory** to `pardes-explorer`.
+3. Confirm the **Framework Preset** is detected as **Next.js** (if the
+   project's root directory was changed after initial creation, re-check this
+   — it doesn't always re-detect automatically).
+4. Add the `ANTHROPIC_API_KEY` environment variable in the Vercel project
    settings.
-4. Deploy. No other configuration is needed — the Sefaria API requires no key.
+5. Deploy.
 
 ## Notes
 
