@@ -70,7 +70,7 @@ same input is instant and doesn't re-hit the API.
 
 ## Deploy on Vercel
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/YOUR-USERNAME/pardes-explorer&env=ANTHROPIC_API_KEY&envDescription=Anthropic%20API%20key%20for%20Claude&envLink=https://console.anthropic.com)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/ernestrafa/car/tree/claude/pardes-explorer-app-b8xur0/pardes-explorer&env=ANTHROPIC_API_KEY&envDescription=Anthropic%20API%20key%20for%20Claude&envLink=https://console.anthropic.com)
 
 Or manually:
 
