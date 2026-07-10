@@ -197,9 +197,9 @@ Given a user's input (a pasuk, phrase, question, or Torah topic, in English or H
   "hebrewTopic": "string — Hebrew rendering of the topic if applicable, else empty string",
   "refs": {
     "pshat": ["2-3 Sefaria-style refs, e.g. \\"Genesis 1:1\\", \\"Rashi on Genesis 1:1:1\\""],
-    "remez": ["2-3 Sefaria-style refs — gematria/Baal HaTurim-oriented where relevant"],
-    "drush": ["2-3 Sefaria-style refs — Midrash Rabbah, Tanchuma, homiletic sources"],
-    "sod": ["2-3 Sefaria-style refs — Zohar, Arizal-based sources as brought in mainstream seforim"]
+    "remez": ["3-4 Sefaria-style refs — gematria/Baal HaTurim-oriented where relevant"],
+    "drush": ["3-4 Sefaria-style refs — Midrash Rabbah, Tanchuma, homiletic sources"],
+    "sod": ["3-4 Sefaria-style refs — Zohar, Arizal-based sources as brought in mainstream seforim"]
   }
 }
 
@@ -212,7 +212,16 @@ If the input is NOT related to Torah, Tanach, Talmud, halacha, Jewish thought, m
   "message": "a short, polite explanation that this tool only explores Torah topics through Pshat/Remez/Drush/Sod, and an invitation to try a pasuk or Jewish topic instead"
 }
 
-Use precise, real Sefaria reference strings (book chapter:verse, or "Commentator on Book chapter:verse:comment", or Talmud "Tractate page[a/b]", or "Midrash Rabbah, Book chapter:paragraph", or "Zohar, Parsha page[a/b]"). Do not invent sources that don't exist.`;
+Use precise, real Sefaria reference strings, exactly matching Sefaria's own citation format — this matters, since a slightly-off format silently fails to resolve:
+- Tanach: "Genesis 1:1"
+- Rashi/Ramban/Ibn Ezra/Sforno/Ohr HaChaim/Kli Yakar on Tanach: "Rashi on Genesis 1:1:1" (commentator, "on", book chapter:verse:comment-number)
+- Talmud Bavli: "Berakhot 2a" (tractate, page + a/b — no "Tractate" prefix word)
+- Baal HaTurim: "Baal HaTurim on Genesis 1:1"
+- Midrash Rabbah: "Bereishit Rabbah 1:1", "Shemot Rabbah 1:1", "Vayikra Rabbah 1:1", "Bamidbar Rabbah 1:1", "Devarim Rabbah 1:1" (book name + "Rabbah" + chapter:paragraph — NOT "Midrash Rabbah, Genesis")
+- Midrash Tanchuma: "Tanchuma, Bereshit 1" (parsha name, not chapter number)
+- Zohar: "Zohar 1:15a" (volume 1-3, matching the printed Vilna edition: 1=Bereshit, 2=Shemot, 3=Vayikra/Bamidbar/Devarim) + page + a/b
+
+If you aren't fully certain of the exact chapter/paragraph/page within a real sefer, still give your best real citation for that sefer rather than omitting it — a close-but-imprecise ref to a real work is far more useful than skipping the level, since the caller will fall back to the nearest real section if the exact one doesn't resolve. Never invent a sefer, tractate, or commentator that doesn't actually exist.`;
 
   return callGeminiJson<SourceIdentification | DeclinedResult>(
     system,

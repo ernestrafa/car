@@ -77,15 +77,10 @@ export async function resolveRef(
   }
 }
 
-/**
- * Validates a ref, then fetches its Hebrew/English text. Returns null for
- * any ref that fails validation or has no retrievable text — callers should
- * drop these rather than surface a placeholder.
- */
-export async function fetchSource(rawRef: string): Promise<SefariaSource | null> {
-  const resolved = await resolveRef(rawRef);
-  if (!resolved) return null;
-
+async function fetchResolvedText(resolved: {
+  ref: string;
+  urlSlug: string;
+}): Promise<SefariaSource | null> {
   try {
     const res = await fetch(
       `${SEFARIA_API_BASE}/texts/${encodeURIComponent(resolved.ref)}?context=0&commentary=0`,
@@ -109,6 +104,40 @@ export async function fetchSource(rawRef: string): Promise<SefariaSource | null>
   } catch {
     return null;
   }
+}
+
+/** Drops the last ":segment" or " segment" of a ref, e.g.
+ * "Bereishit Rabbah 1:2" -> "Bereishit Rabbah 1", "Zohar 1:15b" -> "Zohar 1".
+ * Returns null once there's nothing left to trim. */
+function widenRef(ref: string): string | null {
+  const colonIdx = ref.lastIndexOf(":");
+  if (colonIdx > 0) return ref.slice(0, colonIdx);
+  const spaceIdx = ref.lastIndexOf(" ");
+  if (spaceIdx > 0) return ref.slice(0, spaceIdx);
+  return null;
+}
+
+/**
+ * Validates a ref, then fetches its Hebrew/English text. If the model's
+ * proposed ref is close but not exact (e.g. the wrong paragraph/page within
+ * a real, existing section), a ref this precise routinely fails outright
+ * rather than silently landing on a neighboring real one — so on failure
+ * this progressively widens the ref (dropping the most specific component)
+ * and retries, up to twice, before giving up. Every result returned this way
+ * is still a real, Sefaria-resolved, non-fabricated text — just possibly at
+ * the section level instead of the exact paragraph the model guessed.
+ */
+export async function fetchSource(rawRef: string): Promise<SefariaSource | null> {
+  let ref: string | null = rawRef;
+  for (let attempt = 0; attempt < 3 && ref; attempt++) {
+    const resolved = await resolveRef(ref);
+    if (resolved) {
+      const source = await fetchResolvedText(resolved);
+      if (source) return source;
+    }
+    ref = widenRef(ref);
+  }
+  return null;
 }
 
 /** Fetches many refs in parallel and silently drops any that don't resolve. */
