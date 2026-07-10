@@ -77,7 +77,7 @@ export async function POST(request: Request) {
     const raw = await synthesizeAnalysis(input, identification, sourcesByLevel);
 
     // Attach real, working Sefaria links — computed from validated ref
-    // data, not from whatever string Claude happened to echo back.
+    // data, not from whatever string the model happened to echo back.
     const refToSlug = new Map<string, string>();
     for (const level of LEVELS) {
       for (const src of sourcesByLevel[level]) {
@@ -94,15 +94,12 @@ export async function POST(request: Request) {
           const rawLevel = raw.levels?.[level];
           const detail: LevelDetail = {
             summary: rawLevel?.summary ?? [],
-            detailed: {
-              explanation: rawLevel?.detailed?.explanation ?? "",
-              quotes: (rawLevel?.detailed?.quotes ?? []).map((q) => ({
-                ...q,
-                sefariaUrl: sefariaUrl(
-                  refToSlug.get(q.sefariaRef) ?? refToUrlSlug(q.sefariaRef)
-                ),
-              })),
-            },
+            quotes: (rawLevel?.quotes ?? []).map((q) => ({
+              ...q,
+              sefariaUrl: sefariaUrl(
+                refToSlug.get(q.sefariaRef) ?? refToUrlSlug(q.sefariaRef)
+              ),
+            })),
           };
           return [level, detail];
         })

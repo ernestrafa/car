@@ -28,7 +28,7 @@ function QuoteBlockView({ quote }: { quote: QuoteBlock }) {
         </a>
       </div>
       {quote.context && (
-        <p className="mt-1 text-sm italic text-ink-soft/80">{quote.context}</p>
+        <p className="mt-1 text-sm text-ink-soft/80">{quote.context}</p>
       )}
     </div>
   );
@@ -43,7 +43,7 @@ export function LevelCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const meta = LEVEL_META[level];
-  const hasQuotes = detail.detailed.quotes.length > 0;
+  const hasQuotes = detail.quotes.length > 0;
 
   return (
     <section className={`level-card ${meta.className} border p-6 sm:p-7`}>
@@ -62,8 +62,12 @@ export function LevelCard({
         </p>
       )}
 
+      <p className="mt-3 text-xs font-medium uppercase tracking-wide text-ink-soft/60">
+        AI-generated overview — restated from the primary sources below
+      </p>
+
       {detail.summary.length > 0 ? (
-        <ul className="mt-4 space-y-1.5">
+        <ul className="mt-2 space-y-1.5">
           {detail.summary.map((point, i) => (
             <li key={i} className="flex gap-2 text-[15px] leading-relaxed text-ink">
               <span
@@ -75,44 +79,32 @@ export function LevelCard({
           ))}
         </ul>
       ) : (
-        <p className="mt-4 text-sm italic text-ink-soft/80">
-          No grounded summary points were found for this level.
+        <p className="mt-2 text-sm italic text-ink-soft/80">
+          No grounded sources were found for this level.
         </p>
       )}
 
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="mt-4 text-sm font-semibold text-ink-soft underline decoration-dotted underline-offset-4 hover:text-ink"
-        aria-expanded={expanded}
-      >
-        {expanded ? "Hide details" : "More details"}
-      </button>
+      {hasQuotes && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-4 text-sm font-semibold text-ink-soft underline decoration-dotted underline-offset-4 hover:text-ink"
+          aria-expanded={expanded}
+        >
+          {expanded
+            ? "Hide primary sources"
+            : `Show primary sources (${detail.quotes.length})`}
+        </button>
+      )}
 
-      {expanded && (
-        <div className="mt-4 space-y-4 border-t border-ink/10 pt-4">
-          {detail.detailed.explanation && (
-            <div className="space-y-3 text-[15px] leading-relaxed text-ink">
-              {detail.detailed.explanation
-                .split(/\n{2,}/)
-                .map((para, i) => (
-                  <p key={i}>{para}</p>
-                ))}
-            </div>
-          )}
-
-          {hasQuotes ? (
-            <div className="space-y-3">
-              {detail.detailed.quotes.map((quote, i) => (
-                <QuoteBlockView key={i} quote={quote} />
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm italic text-ink-soft/80">
-              No grounded sources were retrievable for this level — showing
-              what&rsquo;s real rather than padding it out.
-            </p>
-          )}
+      {expanded && hasQuotes && (
+        <div className="mt-4 space-y-3 border-t border-ink/10 pt-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-ink-soft/60">
+            Verbatim text and Sefaria&rsquo;s own translation — not AI-generated
+          </p>
+          {detail.quotes.map((quote, i) => (
+            <QuoteBlockView key={i} quote={quote} />
+          ))}
         </div>
       )}
     </section>

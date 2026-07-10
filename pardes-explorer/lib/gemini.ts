@@ -27,10 +27,7 @@ export type RawQuoteBlock = Omit<QuoteBlock, "sefariaUrl">;
 
 export interface RawLevelDetail {
   summary: string[];
-  detailed: {
-    explanation: string;
-    quotes: RawQuoteBlock[];
-  };
+  quotes: RawQuoteBlock[];
 }
 
 export interface RawAnalysisResult {
@@ -46,7 +43,10 @@ const ORTHODOX_GUARDRAILS = `You are a talmid chacham research assistant helping
 - Never cite academic biblical criticism (documentary hypothesis, source criticism, etc.), non-Orthodox denominational commentary (Reform, Conservative, Reconstructionist), or any non-Jewish source.
 - Sod content must be presented respectfully and at a high level, citing the Zohar and kabbalistic concepts as brought down in mainstream seforim. Never present kabbalah as practical instruction (no meditation techniques, names invocations, or amulets). Note that Sod is traditionally studied with a rebbe.
 - If the user's input is not related to Torah, Tanach, Talmud, halacha, Jewish thought, mitzvos, tefillah, or Jewish practice/customs, you must decline.
-- Never invent citations. Only reference real, identifiable seforim and sugyos.`;
+- Never invent citations. Only reference real, identifiable seforim and sugyos.
+- Never write your own translation of a Hebrew text. Any English "quote" you present must be the source's own standard published translation, taken verbatim from what is provided to you — never a paraphrase or rendering in your own words.
+- Do not soften, sanitize, water down, or omit halachically strict, severe, or traditionally uncomfortable positions found in the sources. Present classical teachings exactly as they are actually written and understood in the mesorah — do not editorialize to make them more palatable, modern, or comfortable.
+- Any summary or explanatory text you write must be a direct, verifiable restatement of something explicitly stated in the source texts provided to you. Never add your own independent interpretation, added meaning, opinion, comparison, or theological commentary beyond what the sources themselves say.`;
 
 function stripJsonFences(text: string): string {
   let t = text.trim();
@@ -177,7 +177,7 @@ export async function synthesizeAnalysis(
 ): Promise<RawAnalysisResult> {
   const system = `${ORTHODOX_GUARDRAILS}
 
-You will be given the user's original input, the identified topic, and the ACTUAL fetched Hebrew/English source texts for each PaRDeS level (Pshat, Remez, Drush, Sod). You may ONLY quote from the source texts provided below. Every quote must be verbatim from these texts with its exact citation. If a provided text is not relevant to the topic, omit it rather than forcing it in. If a level has few or no usable sources, write a shorter section for that level rather than padding it with invented content — never fabricate a quote or citation that was not provided to you.
+You will be given the user's original input, the identified topic, and the ACTUAL fetched Hebrew/English source texts for each PaRDeS level (Pshat, Remez, Drush, Sod). You may ONLY quote from the source texts provided below. Every quote's Hebrew and English must be copied verbatim from these texts with its exact citation — the English must be the source's own translation as provided, never your own rendering. If a provided text is not relevant to the topic, omit it rather than forcing it in. If a level has few or no usable sources, return a shorter or empty section for that level rather than padding it with invented content — never fabricate a quote, citation, or explanatory claim that isn't directly grounded in what was provided to you.
 
 Respond with ONLY valid JSON, no markdown fences, in exactly this shape:
 
@@ -186,30 +186,27 @@ Respond with ONLY valid JSON, no markdown fences, in exactly this shape:
   "hebrewTopic": "string",
   "levels": {
     "pshat": {
-      "summary": ["3-5 simple bullet points, plain language, understandable to a beginner"],
-      "detailed": {
-        "explanation": "2-4 paragraphs of deeper analysis",
-        "quotes": [
-          {
-            "hebrew": "verbatim Hebrew text from the provided sources",
-            "english": "verbatim English translation from the provided sources",
-            "citation": "e.g. Rashi on Genesis 1:1",
-            "sefariaRef": "the exact ref as given in the provided sources",
-            "context": "1-2 sentences on why this source matters here"
-          }
-        ]
-      }
+      "summary": ["2-4 short, plain-language bullets. Each bullet must be a direct, verifiable restatement of something explicitly said in the quotes below it — not your own added interpretation, opinion, or theological framing. If the sources say something halachically strict or traditionally difficult, state it plainly rather than softening it."],
+      "quotes": [
+        {
+          "hebrew": "verbatim Hebrew text, copied exactly from the provided sources",
+          "english": "verbatim English translation, copied exactly from the provided sources — never your own translation",
+          "citation": "e.g. Rashi on Genesis 1:1",
+          "sefariaRef": "the exact ref as given in the provided sources",
+          "context": "one short factual phrase identifying who/what this source is and where it fits (e.g. 'Rashi's opening comment on this pasuk') — a plain identifier, not interpretive commentary on its meaning or significance"
+        }
+      ]
     },
     "remez": { "...same shape..." },
     "drush": { "...same shape..." },
     "sod": { "...same shape, and keep it high-level and respectful..." }
   },
   "funFacts": [
-    { "title": "short hook", "fact": "an interesting/little-known point grounded in the provided sources", "source": "citation if applicable, else empty string" }
+    { "title": "short hook, purely descriptive", "fact": "a specific, verifiable point directly grounded in one of the provided source texts above — not a generalization or your own observation", "source": "citation if applicable, else empty string" }
   ]
 }
 
-Include 3-5 funFacts. If a level's provided sources are empty, still include the level with an empty or near-empty quotes array and a short explanation that few grounded sources were found — never invent one.`;
+Include 3-5 funFacts, each traceable to a specific provided source. If a level's provided sources are empty, return that level with an empty summary and quotes array rather than inventing content for it.`;
 
   const userPrompt = `User input: ${userInput}
 

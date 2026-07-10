@@ -24,6 +24,24 @@ Citation links are built from the validated Sefaria URL slug (not from
 whatever text the model echoes back), so every "view on Sefaria" link is a
 real, working link.
 
+### What's AI-generated vs. what's a real source
+
+The UI draws a hard, visible line between the two:
+
+- **Summary bullets** ("AI-generated overview") are the model's own plain-
+  language wording, but the prompt requires every bullet to be a direct,
+  verifiable restatement of something explicitly said in the quotes beneath
+  it — no added interpretation, opinion, theological framing, or softening of
+  halachically strict/difficult positions.
+- **Quotes** ("verbatim text and Sefaria's own translation — not AI-
+  generated") are exactly what they say: the Hebrew and English come
+  straight from Sefaria's API, never from the model. The model is explicitly
+  instructed never to write its own translation.
+
+There is no free-form "explanation" essay anywhere in the app — that was a
+deliberate design choice so the model's only creative-writing surface is a
+few short, tightly source-anchored bullets, not open-ended commentary.
+
 ## Setup
 
 ```bash

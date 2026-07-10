@@ -116,6 +116,11 @@ export default function Home() {
             Explore Torah through Pshat, Remez, Drush, and Sod — with real
             sources.
           </p>
+          <p className="mx-auto mt-3 max-w-lg text-xs text-ink-soft/70">
+            Overviews are AI-generated restatements of the sources below them
+            — not psak halacha or a substitute for a rav. Only the quoted
+            Hebrew/English text is a verbatim primary source.
+          </p>
         </header>
 
         <div className="mt-10">
