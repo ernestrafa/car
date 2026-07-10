@@ -2,7 +2,12 @@ import { ApiError, GoogleGenAI } from "@google/genai";
 import type { SefariaSource } from "./sefaria";
 import type { PardesLevel, QuoteBlock, FunFact, SourceIdentification } from "./types";
 
-const MODEL = "gemini-3.5-flash";
+// flash-lite: smaller/faster model in the same generation, with its own
+// capacity pool separate from the full flash model. This task is mechanical
+// restatement/formatting (see thinkingConfig below), not deep reasoning, so
+// the lite tier is a good fit — and it's markedly less likely to hit the
+// "high demand" 503s the full gemini-3.5-flash model was returning.
+const MODEL = "gemini-3.1-flash-lite";
 
 let client: GoogleGenAI | null = null;
 function getClient(): GoogleGenAI {
@@ -11,10 +16,19 @@ function getClient(): GoogleGenAI {
 }
 
 /** Turns a raw Gemini SDK error into a message worth showing a user,
- * distinguishing "try again in a bit" (rate limit) from everything else. */
+ * distinguishing "try again in a bit" (rate limit / temporary capacity
+ * issue on Google's end) from everything else. */
 export function describeGeminiError(err: unknown): string {
-  if (err instanceof ApiError && err.status === 429) {
-    return "Gemini's free tier is rate-limited right now — wait a minute and try again.";
+  if (err instanceof ApiError) {
+    if (err.status === 429) {
+      return "Gemini's free tier is rate-limited right now — wait a minute and try again.";
+    }
+    if (err.status === 503) {
+      return "Gemini is experiencing high demand right now. Google says this is usually temporary — please try again in a moment.";
+    }
+    if (err.status === 504) {
+      return "Gemini took too long to respond this time. Please try again.";
+    }
   }
   return "Something went wrong talking to the model. Please try again.";
 }
@@ -63,42 +77,88 @@ function stripJsonFences(text: string): string {
   return t;
 }
 
-async function callGeminiJson<T>(
-  system: string,
-  userPrompt: string,
-  maxOutputTokens: number
-): Promise<T> {
-  const ai = getClient();
-  const config = {
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const RETRYABLE_STATUSES = new Set([503, 504]);
+
+type GeminiContents = Parameters<
+  ReturnType<typeof getClient>["models"]["generateContent"]
+>[0]["contents"];
+
+function baseConfig(system: string, maxOutputTokens: number, timeoutMs: number) {
+  return {
     systemInstruction: system,
     responseMimeType: "application/json",
     maxOutputTokens,
     // This task is mechanical restatement/formatting, not deep reasoning —
-    // thinking would eat time and output-token budget for no benefit, and
-    // was almost certainly why requests were running past Vercel's timeout.
+    // thinking would eat time and output-token budget for no benefit.
     thinkingConfig: { thinkingBudget: 0 },
-    // The SDK retries transient errors (e.g. free-tier rate limits) up to 5
-    // times by default, with backoff between attempts — on a throttled free
-    // tier this alone can burn 30+ seconds before anything is returned,
-    // which looks identical to a hang regardless of request size. Fail fast
-    // on the first error instead so a real cause (like a 429) surfaces
-    // immediately rather than being masked by silent retries.
-    httpOptions: { timeout: 15000, retryOptions: { attempts: 1 } },
+    // We manage retries ourselves (see generateWithRetry) instead of relying
+    // on the SDK's default 5-attempt backoff, which can silently burn the
+    // whole time budget on a throttled free tier before anything comes back.
+    httpOptions: { timeout: timeoutMs, retryOptions: { attempts: 1 } },
   };
+}
 
-  const first = await ai.models.generateContent({
-    model: MODEL,
-    contents: userPrompt,
-    config,
-  });
+/**
+ * Calls Gemini once, and — only for transient capacity errors (503
+ * UNAVAILABLE / 504 DEADLINE_EXCEEDED, which Google's own error messages
+ * describe as temporary) — retries a single time with whatever time remains
+ * in the caller's budget. A fast 503 (rejected almost immediately) leaves
+ * plenty of budget for a retry; a 504 that already consumed the whole
+ * timeout naturally leaves little or none, so this self-limits without any
+ * extra bookkeeping.
+ */
+async function generateWithRetry(
+  contents: GeminiContents,
+  system: string,
+  maxOutputTokens: number,
+  budgetMs: number
+) {
+  const ai = getClient();
+  const start = Date.now();
+  try {
+    return await ai.models.generateContent({
+      model: MODEL,
+      contents,
+      config: baseConfig(system, maxOutputTokens, budgetMs),
+    });
+  } catch (err) {
+    const status = err instanceof ApiError ? err.status : undefined;
+    if (!status || !RETRYABLE_STATUSES.has(status)) throw err;
+
+    const remaining = budgetMs - (Date.now() - start) - 500;
+    if (remaining < 4000) throw err;
+
+    await sleep(400);
+    return ai.models.generateContent({
+      model: MODEL,
+      contents,
+      config: baseConfig(system, maxOutputTokens, remaining - 400),
+    });
+  }
+}
+
+async function callGeminiJson<T>(
+  system: string,
+  userPrompt: string,
+  maxOutputTokens: number,
+  budgetMs: number
+): Promise<T> {
+  const first = await generateWithRetry(userPrompt, system, maxOutputTokens, budgetMs);
   const firstText = first.text ?? "";
 
   try {
     return JSON.parse(stripJsonFences(firstText)) as T;
   } catch {
-    // retry once with an explicit reminder, replaying the turn as history
+    // retry once with an explicit reminder, replaying the turn as history —
+    // this is for malformed JSON, a different failure mode than the
+    // transient-error retry above, so it gets its own short fixed slice.
   }
 
+  const ai = getClient();
   const retry = await ai.models.generateContent({
     model: MODEL,
     contents: [
@@ -113,7 +173,7 @@ async function callGeminiJson<T>(
         ],
       },
     ],
-    config,
+    config: baseConfig(system, maxOutputTokens, 8000),
   });
   const retryText = retry.text ?? "";
 
@@ -157,7 +217,8 @@ Use precise, real Sefaria reference strings (book chapter:verse, or "Commentator
   return callGeminiJson<SourceIdentification | DeclinedResult>(
     system,
     userInput,
-    1536
+    1536,
+    45000
   );
 }
 
@@ -238,5 +299,5 @@ ${formatFetchedSources(identification.refs.drush, sourcesByLevel.drush) || "(non
 === SOD SOURCES ===
 ${formatFetchedSources(identification.refs.sod, sourcesByLevel.sod) || "(none resolved)"}`;
 
-  return callGeminiJson<RawAnalysisResult>(system, userPrompt, 4096);
+  return callGeminiJson<RawAnalysisResult>(system, userPrompt, 4096, 48000);
 }

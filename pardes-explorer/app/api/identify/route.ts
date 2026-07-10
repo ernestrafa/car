@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { describeGeminiError, identifySources } from "@/lib/gemini";
 
-// Kept short and separate from fetch-sources/synthesize specifically so each
-// serverless invocation finishes well within Vercel's free-plan ~30s edge
-// timeout — see app/api/synthesize/route.ts for the full explanation.
-export const maxDuration = 25;
+// Split from fetch-sources/synthesize so each serverless invocation only
+// does one step — see app/api/synthesize/route.ts for the full explanation.
+// maxDuration was originally 25s; Vercel's Runtime Logs showed timeouts
+// reading exactly "after 25 seconds", proving this config value (not some
+// separate platform ceiling) was the actual limit, so it's raised here to
+// give Gemini calls real breathing room against transient 503/504s.
+export const maxDuration = 55;
 
 export async function POST(request: Request) {
   let body: unknown;

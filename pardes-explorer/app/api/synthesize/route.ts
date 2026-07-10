@@ -9,14 +9,16 @@ import type {
 } from "@/lib/types";
 
 // The full pipeline (identify -> fetch Sefaria texts -> synthesize) used to
-// be one request. On Vercel's Hobby plan the edge/routing layer enforces its
-// own ~30s response ceiling regardless of this route's maxDuration, and the
-// combined pipeline routinely ran past that. Splitting it into three
-// separate requests (see app/api/identify and app/api/fetch-sources) means
-// each individual call only has to finish one step, comfortably under the
-// limit — and lets the client show real progress between steps instead of a
-// fake timer.
-export const maxDuration = 25;
+// be one request, which routinely ran past Vercel's serverless timeout.
+// Splitting it into three separate requests (see app/api/identify and
+// app/api/fetch-sources) means each individual call only has to finish one
+// step — and lets the client show real progress between steps instead of a
+// fake timer. maxDuration was originally 25s; Runtime Logs showed timeouts
+// reading exactly "after 25 seconds", proving this config value (not some
+// separate platform ceiling) was the actual limit, so it's raised here to
+// give the (larger) synthesis call real breathing room against transient
+// Gemini 503/504s.
+export const maxDuration = 55;
 
 const LEVELS: PardesLevel[] = ["pshat", "remez", "drush", "sod"];
 

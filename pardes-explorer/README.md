@@ -27,13 +27,16 @@ Citation links are built from the validated Sefaria URL slug (not from
 whatever text the model echoes back), so every "view on Sefaria" link is a
 real, working link.
 
-**Why three routes instead of one:** on Vercel's free (Hobby) plan, the
-edge/routing layer enforces its own ~30s response ceiling regardless of a
-route's configured `maxDuration`. The full pipeline (two sequential Gemini
-calls plus Sefaria fetches) routinely ran past that in one request. Splitting
-it into three sequential client-driven requests keeps each individual
-serverless invocation short, and lets the loading UI show real progress
-between steps instead of a fake timer.
+**Why three routes instead of one:** the full pipeline (two sequential Gemini
+calls plus Sefaria fetches) routinely ran past a single request's timeout.
+Splitting it into three sequential client-driven requests keeps each
+individual serverless invocation short, and lets the loading UI show real
+progress between steps instead of a fake timer. Each Gemini-calling route
+also retries once, automatically, on a transient `503`/`504` from Gemini's
+backend (the kind Google's own error message calls "usually temporary") —
+using whatever time is left in that route's budget, so a fast rejection gets
+a real second attempt while a request that already used its full timeout
+doesn't compound the delay.
 
 ### What's AI-generated vs. what's a real source
 
@@ -68,16 +71,18 @@ GEMINI_API_KEY=...
 
 Get a free key at [Google AI Studio](https://aistudio.google.com/apikey) —
 the Gemini API has a genuinely free tier (rate-limited) for Flash-tier
-models like `gemini-3.5-flash` (the model this app uses), so no billing
+models like `gemini-3.1-flash-lite` (the model this app uses), so no billing
 setup is required to run this. No key is needed for Sefaria — its API is
 free and public.
 
 Model note: Google periodically retires older Gemini model IDs (this app
-was originally built on `gemini-2.5-flash`, which was retired for new users
-and swapped to `gemini-3.5-flash`). If a deployed instance starts returning
-"model ... is no longer available," check Vercel's Runtime Logs for the
-exact model ID Google now recommends and update the `MODEL` constant in
-`lib/gemini.ts`.
+was originally built on `gemini-2.5-flash`, moved to `gemini-3.5-flash` when
+that was retired, and moved again to `gemini-3.1-flash-lite` — the lite tier
+has its own capacity pool and is less prone to the `503 UNAVAILABLE` "high
+demand" errors the full flash model returned under free-tier load). If a
+deployed instance starts returning "model ... is no longer available," check
+Vercel's Runtime Logs for the exact model ID Google now recommends and
+update the `MODEL` constant in `lib/gemini.ts`.
 
 Run the dev server:
 
@@ -136,7 +141,7 @@ Or manually:
   rather than answered off-topic.
 - If a level turns up few or no grounded sources, the UI shows what's real
   rather than padding it out.
-- This app uses Google's Gemini API (`gemini-3.5-flash`) instead of Claude
+- This app uses Google's Gemini API (`gemini-3.1-flash-lite`) instead of Claude
   specifically to run on Gemini's free tier at no cost. Response quality and
   reliability on this specific task (nuanced source-grounded religious-text
   analysis) hasn't been evaluated against Claude — if quality issues come up,
