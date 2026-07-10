@@ -8,6 +8,10 @@ import {
 } from "@/lib/sefaria";
 import type { AnalysisResult, LevelDetail, PardesLevel } from "@/lib/types";
 
+// Note: on Vercel's Hobby (free) plan, the edge/routing layer enforces its
+// own ~30s response ceiling regardless of this value — it only matters if
+// deployed on a paid plan. Keep the two Gemini calls' output small enough to
+// finish well under 30s to stay usable on Hobby.
 export const maxDuration = 60;
 
 const LEVELS: PardesLevel[] = ["pshat", "remez", "drush", "sod"];

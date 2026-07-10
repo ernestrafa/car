@@ -126,10 +126,10 @@ Given a user's input (a pasuk, phrase, question, or Torah topic, in English or H
   "topic": "string — what the input was identified as, in plain English",
   "hebrewTopic": "string — Hebrew rendering of the topic if applicable, else empty string",
   "refs": {
-    "pshat": ["2-5 Sefaria-style refs, e.g. \\"Genesis 1:1\\", \\"Rashi on Genesis 1:1:1\\""],
-    "remez": ["2-5 Sefaria-style refs — gematria/Baal HaTurim-oriented where relevant"],
-    "drush": ["2-5 Sefaria-style refs — Midrash Rabbah, Tanchuma, homiletic sources"],
-    "sod": ["2-5 Sefaria-style refs — Zohar, Arizal-based sources as brought in mainstream seforim"]
+    "pshat": ["2-3 Sefaria-style refs, e.g. \\"Genesis 1:1\\", \\"Rashi on Genesis 1:1:1\\""],
+    "remez": ["2-3 Sefaria-style refs — gematria/Baal HaTurim-oriented where relevant"],
+    "drush": ["2-3 Sefaria-style refs — Midrash Rabbah, Tanchuma, homiletic sources"],
+    "sod": ["2-3 Sefaria-style refs — Zohar, Arizal-based sources as brought in mainstream seforim"]
   }
 }
 
@@ -147,7 +147,7 @@ Use precise, real Sefaria reference strings (book chapter:verse, or "Commentator
   return callGeminiJson<SourceIdentification | DeclinedResult>(
     system,
     userInput,
-    4096
+    1536
   );
 }
 
@@ -228,5 +228,5 @@ ${formatFetchedSources(identification.refs.drush, sourcesByLevel.drush) || "(non
 === SOD SOURCES ===
 ${formatFetchedSources(identification.refs.sod, sourcesByLevel.sod) || "(none resolved)"}`;
 
-  return callGeminiJson<RawAnalysisResult>(system, userPrompt, 8192);
+  return callGeminiJson<RawAnalysisResult>(system, userPrompt, 4096);
 }
