@@ -70,6 +70,10 @@ async function callGeminiJson<T>(
     systemInstruction: system,
     responseMimeType: "application/json",
     maxOutputTokens,
+    // This task is mechanical restatement/formatting, not deep reasoning —
+    // thinking would eat time and output-token budget for no benefit, and
+    // was almost certainly why requests were running past Vercel's timeout.
+    thinkingConfig: { thinkingBudget: 0 },
   };
 
   const first = await ai.models.generateContent({
