@@ -1,4 +1,12 @@
+import type { SefariaSource } from "./sefaria";
+
 export type PardesLevel = "pshat" | "remez" | "drush" | "sod";
+
+export interface SourceIdentification {
+  topic: string;
+  hebrewTopic: string;
+  refs: Record<PardesLevel, string[]>;
+}
 
 export interface QuoteBlock {
   /** Verbatim Hebrew, straight from the source text. */
@@ -37,10 +45,23 @@ export interface AnalysisResult {
   funFacts: FunFact[];
 }
 
-export type AnalyzeResponse =
-  | { status: "ok"; result: AnalysisResult }
+// The pipeline is split across three separate API calls (rather than one
+// long request) so each individual serverless invocation finishes well
+// within Vercel's free-plan edge timeout, and so the loading UI can reflect
+// real progress instead of a fake timer.
+
+export type IdentifyResponse =
+  | { status: "ready"; identification: SourceIdentification }
   | { status: "declined"; message: string }
+  | { status: "error"; message: string };
+
+export type FetchSourcesResponse =
+  | { status: "ready"; sourcesByLevel: Record<PardesLevel, SefariaSource[]> }
   | { status: "no-sources"; message: string }
+  | { status: "error"; message: string };
+
+export type SynthesizeResponse =
+  | { status: "ok"; result: AnalysisResult }
   | { status: "error"; message: string };
 
 export const LEVEL_META: Record<

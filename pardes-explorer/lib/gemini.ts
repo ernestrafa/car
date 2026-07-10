@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import type { SefariaSource } from "./sefaria";
-import type { PardesLevel, QuoteBlock, FunFact } from "./types";
+import type { PardesLevel, QuoteBlock, FunFact, SourceIdentification } from "./types";
 
 const MODEL = "gemini-3.5-flash";
 
@@ -8,12 +8,6 @@ let client: GoogleGenAI | null = null;
 function getClient(): GoogleGenAI {
   if (!client) client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   return client;
-}
-
-export interface SourceIdentification {
-  topic: string;
-  hebrewTopic: string;
-  refs: Record<PardesLevel, string[]>;
 }
 
 export interface DeclinedResult {

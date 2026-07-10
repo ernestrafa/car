@@ -1,12 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { ExampleChips } from "@/components/ExampleChips";
-import { LoadingStages, LOADING_STAGES } from "@/components/LoadingStages";
+import { LoadingStages } from "@/components/LoadingStages";
 import { LevelCard } from "@/components/LevelCard";
 import { FunFacts } from "@/components/FunFacts";
 import { LEVEL_ORDER } from "@/lib/types";
-import type { AnalysisResult, AnalyzeResponse } from "@/lib/types";
+import type {
+  AnalysisResult,
+  FetchSourcesResponse,
+  IdentifyResponse,
+  SynthesizeResponse,
+} from "@/lib/types";
 
 type UiState =
   | { kind: "idle" }
@@ -35,16 +40,18 @@ function writeCache(cache: Record<string, AnalysisResult>) {
   }
 }
 
+async function postJson<T>(url: string, body: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return (await res.json()) as T;
+}
+
 export default function Home() {
   const [input, setInput] = useState("");
   const [state, setState] = useState<UiState>({ kind: "idle" });
-  const stageTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (stageTimer.current) clearInterval(stageTimer.current);
-    };
-  }, []);
 
   async function runQuery(query: string) {
     const trimmed = query.trim();
@@ -56,46 +63,59 @@ export default function Home() {
       return;
     }
 
+    // The pipeline is three separate requests, run in sequence, so each one
+    // stays comfortably under Vercel's free-plan timeout — the stage shown
+    // below reflects which request is actually in flight, not a fake timer.
     setState({ kind: "loading", stage: 0 });
-    if (stageTimer.current) clearInterval(stageTimer.current);
-    stageTimer.current = setInterval(() => {
-      setState((prev) =>
-        prev.kind === "loading"
-          ? { kind: "loading", stage: Math.min(prev.stage + 1, LOADING_STAGES.length - 1) }
-          : prev
-      );
-    }, 3200);
 
     try {
-      const res = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input: trimmed }),
+      const identifyData = await postJson<IdentifyResponse>("/api/identify", {
+        input: trimmed,
       });
-      const data: AnalyzeResponse = await res.json();
 
-      if (data.status === "ok") {
-        const nextCache = { ...cache, [trimmed]: data.result };
-        writeCache(nextCache);
-        setState({ kind: "result", result: data.result });
-      } else if (data.status === "declined") {
-        setState({ kind: "message", message: data.message });
-      } else if (data.status === "no-sources") {
-        setState({ kind: "error", message: data.message });
-      } else {
-        setState({ kind: "error", message: data.message });
+      if (identifyData.status === "declined") {
+        setState({ kind: "message", message: identifyData.message });
+        return;
       }
+      if (identifyData.status !== "ready") {
+        setState({ kind: "error", message: identifyData.message });
+        return;
+      }
+
+      setState({ kind: "loading", stage: 1 });
+
+      const fetchData = await postJson<FetchSourcesResponse>(
+        "/api/fetch-sources",
+        { identification: identifyData.identification }
+      );
+
+      if (fetchData.status !== "ready") {
+        setState({ kind: "error", message: fetchData.message });
+        return;
+      }
+
+      setState({ kind: "loading", stage: 2 });
+
+      const synthData = await postJson<SynthesizeResponse>("/api/synthesize", {
+        input: trimmed,
+        identification: identifyData.identification,
+        sourcesByLevel: fetchData.sourcesByLevel,
+      });
+
+      if (synthData.status !== "ok") {
+        setState({ kind: "error", message: synthData.message });
+        return;
+      }
+
+      const nextCache = { ...cache, [trimmed]: synthData.result };
+      writeCache(nextCache);
+      setState({ kind: "result", result: synthData.result });
     } catch {
       setState({
         kind: "error",
         message:
           "Couldn't reach the server. Check your connection and try again.",
       });
-    } finally {
-      if (stageTimer.current) {
-        clearInterval(stageTimer.current);
-        stageTimer.current = null;
-      }
     }
   }
 

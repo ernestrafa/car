@@ -7,22 +7,33 @@ real sources fetched live from [Sefaria](https://www.sefaria.org).
 
 ## How it's grounded (anti-hallucination pipeline)
 
-Every query runs a three-step server-side pipeline in
-[`app/api/analyze/route.ts`](./app/api/analyze/route.ts):
+Every query runs a three-step pipeline, each step its **own API route** —
+`POST /api/identify` → `POST /api/fetch-sources` → `POST /api/synthesize` —
+called in sequence by the client:
 
-1. **Source identification** — Gemini proposes 2–5 candidate Sefaria refs per
-   PaRDeS level (`lib/gemini.ts` → `identifySources`).
-2. **Validation + fetch** — every proposed ref is checked against Sefaria's
-   name-resolution API and, if valid, its real Hebrew/English text is fetched
-   (`lib/sefaria.ts`). Any ref that doesn't resolve is silently dropped — this
-   is the hallucination filter.
-3. **Grounded synthesis** — Gemini is called again with only the real fetched
-   texts and instructed to quote *only* from them, verbatim, with exact
-   citations (`lib/gemini.ts` → `synthesizeAnalysis`).
+1. **Source identification** (`app/api/identify/route.ts`) — Gemini proposes
+   2–3 candidate Sefaria refs per PaRDeS level (`lib/gemini.ts` →
+   `identifySources`).
+2. **Validation + fetch** (`app/api/fetch-sources/route.ts`) — every proposed
+   ref is checked against Sefaria's name-resolution API and, if valid, its
+   real Hebrew/English text is fetched (`lib/sefaria.ts`). Any ref that
+   doesn't resolve is silently dropped — this is the hallucination filter.
+3. **Grounded synthesis** (`app/api/synthesize/route.ts`) — Gemini is called
+   again with only the real fetched texts and instructed to quote *only* from
+   them, verbatim, with exact citations (`lib/gemini.ts` →
+   `synthesizeAnalysis`).
 
 Citation links are built from the validated Sefaria URL slug (not from
 whatever text the model echoes back), so every "view on Sefaria" link is a
 real, working link.
+
+**Why three routes instead of one:** on Vercel's free (Hobby) plan, the
+edge/routing layer enforces its own ~30s response ceiling regardless of a
+route's configured `maxDuration`. The full pipeline (two sequential Gemini
+calls plus Sefaria fetches) routinely ran past that in one request. Splitting
+it into three sequential client-driven requests keeps each individual
+serverless invocation short, and lets the loading UI show real progress
+between steps instead of a fake timer.
 
 ### What's AI-generated vs. what's a real source
 
@@ -80,14 +91,17 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ```
 app/
-  page.tsx              — hero, input, staged loading, results UI
-  api/analyze/route.ts  — the 3-step pipeline described above
+  page.tsx                      — hero, input, staged loading, results UI;
+                                   orchestrates the 3 requests below in sequence
+  api/identify/route.ts         — step 1: identify candidate sources
+  api/fetch-sources/route.ts    — step 2: validate + fetch real Sefaria texts
+  api/synthesize/route.ts       — step 3: grounded synthesis
 lib/
   gemini.ts               — the two Gemini calls (identify, synthesize)
   sefaria.ts              — ref validation, text fetching, HTML stripping
   types.ts                 — shared types between server and client
 components/
-  LevelCard.tsx           — one PaRDeS level card (summary + expandable detail + quotes)
+  LevelCard.tsx           — one PaRDeS level card (summary + expandable quotes)
   FunFacts.tsx             — "Hidden Gems" band
   LoadingStages.tsx        — staged loading indicator
   ExampleChips.tsx         — tappable example queries
