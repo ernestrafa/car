@@ -56,9 +56,17 @@ GEMINI_API_KEY=...
 ```
 
 Get a free key at [Google AI Studio](https://aistudio.google.com/apikey) —
-the Gemini API has a genuinely free tier (rate-limited) for the
-`gemini-2.5-flash` model this app uses, so no billing setup is required to
-run this. No key is needed for Sefaria — its API is free and public.
+the Gemini API has a genuinely free tier (rate-limited) for Flash-tier
+models like `gemini-3.5-flash` (the model this app uses), so no billing
+setup is required to run this. No key is needed for Sefaria — its API is
+free and public.
+
+Model note: Google periodically retires older Gemini model IDs (this app
+was originally built on `gemini-2.5-flash`, which was retired for new users
+and swapped to `gemini-3.5-flash`). If a deployed instance starts returning
+"model ... is no longer available," check Vercel's Runtime Logs for the
+exact model ID Google now recommends and update the `MODEL` constant in
+`lib/gemini.ts`.
 
 Run the dev server:
 
@@ -114,7 +122,7 @@ Or manually:
   rather than answered off-topic.
 - If a level turns up few or no grounded sources, the UI shows what's real
   rather than padding it out.
-- This app uses Google's Gemini API (`gemini-2.5-flash`) instead of Claude
+- This app uses Google's Gemini API (`gemini-3.5-flash`) instead of Claude
   specifically to run on Gemini's free tier at no cost. Response quality and
   reliability on this specific task (nuanced source-grounded religious-text
   analysis) hasn't been evaluated against Claude — if quality issues come up,

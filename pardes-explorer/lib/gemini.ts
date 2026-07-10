@@ -2,7 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import type { SefariaSource } from "./sefaria";
 import type { PardesLevel, QuoteBlock, FunFact } from "./types";
 
-const MODEL = "gemini-2.5-flash";
+const MODEL = "gemini-3.5-flash";
 
 let client: GoogleGenAI | null = null;
 function getClient(): GoogleGenAI {
