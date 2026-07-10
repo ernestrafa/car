@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { identifySources } from "@/lib/gemini";
+import { describeGeminiError, identifySources } from "@/lib/gemini";
 
 // Kept short and separate from fetch-sources/synthesize specifically so each
 // serverless invocation finishes well within Vercel's free-plan ~30s edge
@@ -46,11 +46,7 @@ export async function POST(request: Request) {
   } catch (err) {
     console.error("identify route error", err);
     return NextResponse.json(
-      {
-        status: "error",
-        message:
-          "Something went wrong while identifying sources. Please try again.",
-      },
+      { status: "error", message: describeGeminiError(err) },
       { status: 500 }
     );
   }

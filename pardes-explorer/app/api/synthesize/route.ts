@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { synthesizeAnalysis } from "@/lib/gemini";
+import { describeGeminiError, synthesizeAnalysis } from "@/lib/gemini";
 import { refToUrlSlug, sefariaUrl, type SefariaSource } from "@/lib/sefaria";
 import type {
   AnalysisResult,
@@ -81,11 +81,7 @@ export async function POST(request: Request) {
   } catch (err) {
     console.error("synthesize route error", err);
     return NextResponse.json(
-      {
-        status: "error",
-        message:
-          "Something went wrong while building the analysis. Please try again.",
-      },
+      { status: "error", message: describeGeminiError(err) },
       { status: 500 }
     );
   }

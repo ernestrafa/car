@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { ApiError, GoogleGenAI } from "@google/genai";
 import type { SefariaSource } from "./sefaria";
 import type { PardesLevel, QuoteBlock, FunFact, SourceIdentification } from "./types";
 
@@ -8,6 +8,15 @@ let client: GoogleGenAI | null = null;
 function getClient(): GoogleGenAI {
   if (!client) client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   return client;
+}
+
+/** Turns a raw Gemini SDK error into a message worth showing a user,
+ * distinguishing "try again in a bit" (rate limit) from everything else. */
+export function describeGeminiError(err: unknown): string {
+  if (err instanceof ApiError && err.status === 429) {
+    return "Gemini's free tier is rate-limited right now — wait a minute and try again.";
+  }
+  return "Something went wrong talking to the model. Please try again.";
 }
 
 export interface DeclinedResult {
@@ -68,6 +77,13 @@ async function callGeminiJson<T>(
     // thinking would eat time and output-token budget for no benefit, and
     // was almost certainly why requests were running past Vercel's timeout.
     thinkingConfig: { thinkingBudget: 0 },
+    // The SDK retries transient errors (e.g. free-tier rate limits) up to 5
+    // times by default, with backoff between attempts — on a throttled free
+    // tier this alone can burn 30+ seconds before anything is returned,
+    // which looks identical to a hang regardless of request size. Fail fast
+    // on the first error instead so a real cause (like a 429) surfaces
+    // immediately rather than being masked by silent retries.
+    httpOptions: { timeout: 15000, retryOptions: { attempts: 1 } },
   };
 
   const first = await ai.models.generateContent({
